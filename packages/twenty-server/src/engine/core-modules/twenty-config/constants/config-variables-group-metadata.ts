@@ -147,4 +147,14 @@ export const CONFIG_VARIABLES_GROUP_METADATA: Record<
     isHiddenOnLoad: true,
     isHiddenInAdminPanel: true,
   },
+  [ConfigVariablesGroup.SUITE_EXCHANGE]: {
+    position: 2300,
+    description:
+      'Configure the OVH Suite token exchange: trade a suite (Clavis) access token for a Twenty session in a fixed workspace.',
+    isHiddenOnLoad: true,
+    // An admin who can repoint SUITE_JWKS_URL can mint a session for any
+    // email, so the group stays out of the panel like the other auth-critical
+    // ones.
+    isHiddenInAdminPanel: true,
+  },
 };

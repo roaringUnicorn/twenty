@@ -11,6 +11,7 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  IsUUID,
   Max,
   ValidateIf,
   type ValidationError,
@@ -2444,6 +2445,69 @@ export class ConfigVariables {
   })
   @IsOptional()
   APP_REGISTRY_TOKEN: string;
+
+  @ConfigVariablesMetadata({
+    group: ConfigVariablesGroup.SUITE_EXCHANGE,
+    description:
+      'Enable POST /auth/suite/exchange, which trades an OVH Suite (Clavis) access token for a Twenty session',
+    type: ConfigVariableType.BOOLEAN,
+  })
+  @IsOptional()
+  SUITE_EXCHANGE_ENABLED = false;
+
+  @ConfigVariablesMetadata({
+    group: ConfigVariablesGroup.SUITE_EXCHANGE,
+    description:
+      'Expected `iss` claim of the suite access token. This is the browser-facing Clavis URL, which is typically not reachable from the server, hence distinct from SUITE_JWKS_URL',
+    type: ConfigVariableType.STRING,
+  })
+  @ValidateIf((env) => env.SUITE_EXCHANGE_ENABLED)
+  @IsString()
+  @IsNotEmpty()
+  SUITE_ISSUER: string;
+
+  @ConfigVariablesMetadata({
+    group: ConfigVariablesGroup.SUITE_EXCHANGE,
+    description:
+      'URL the server fetches the suite JWKS from, e.g. http://clavis:3001/api/clavis/.well-known/jwks.json',
+    type: ConfigVariableType.STRING,
+  })
+  @ValidateIf((env) => env.SUITE_EXCHANGE_ENABLED)
+  @IsUrl({ require_tld: false, require_protocol: true })
+  SUITE_JWKS_URL: string;
+
+  @ConfigVariablesMetadata({
+    group: ConfigVariablesGroup.SUITE_EXCHANGE,
+    description: 'Expected `aud` claim of the suite access token',
+    type: ConfigVariableType.STRING,
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  SUITE_AUDIENCE = 'ovh-suite';
+
+  @ConfigVariablesMetadata({
+    group: ConfigVariablesGroup.SUITE_EXCHANGE,
+    description: 'Id of the workspace every exchanged suite user lands in',
+    type: ConfigVariableType.STRING,
+  })
+  @ValidateIf((env) => env.SUITE_EXCHANGE_ENABLED)
+  @IsUUID()
+  SUITE_WORKSPACE_ID: string;
+
+  @ConfigVariablesMetadata({
+    group: ConfigVariablesGroup.SUITE_EXCHANGE,
+    description:
+      'Suite organisation allowed to exchange, matched against the token `org_id` claim. Unset accepts every organisation of the issuer, which shares one workspace between all of them',
+    type: ConfigVariableType.STRING,
+  })
+  // compose has no conditionals, so the deployment passes it through as an
+  // empty string when it is unset — which @IsOptional alone would reject.
+  @ValidateIf(
+    (env) => env.SUITE_ORG_ID !== undefined && env.SUITE_ORG_ID !== '',
+  )
+  @IsUUID()
+  SUITE_ORG_ID: string;
 }
 
 export const validate = (config: Record<string, unknown>): ConfigVariables => {
