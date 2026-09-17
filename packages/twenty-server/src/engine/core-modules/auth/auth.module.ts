@@ -174,6 +174,7 @@ import { JwtAuthStrategy } from './strategies/jwt.auth.strategy';
   ],
   exports: [
     AccessTokenService,
+    SignInUpService,
     LoginTokenService,
     RefreshTokenService,
     CreateMessageChannelService,

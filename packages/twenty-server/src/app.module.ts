@@ -121,6 +121,12 @@ export class AppModule {
         path: `${ApiPath.Auth}/saml/callback/:identityProviderId`,
         method: RequestMethod.POST,
       })
+      // A cross-origin form post from the OVH Suite host page, authenticated on
+      // the suite access token rather than the cookie.
+      .exclude({
+        path: `${ApiPath.Auth}/suite/exchange`,
+        method: RequestMethod.POST,
+      })
       .forRoutes({ path: '*path', method: RequestMethod.ALL });
 
     consumer

@@ -50385,6 +50385,7 @@ __metadata:
     ioredis: "npm:5.10.1"
     jest: "npm:29.7.0"
     jest-environment-node: "npm:^29.4.1"
+    jose: "npm:^6.1.3"
     jsdom: "npm:^30.0.1"
     json-schema: "npm:0.4.0"
     jsonwebtoken: "npm:9.0.2"
