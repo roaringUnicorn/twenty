@@ -17,7 +17,8 @@ const SUITE_ISSUER = 'https://suite.example.com';
 const SUITE_AUDIENCE = 'ovh-suite';
 const SUITE_JWKS_URL = 'http://clavis:3001/api/clavis/.well-known/jwks.json';
 const KEY_ID = 'clavis-key-1';
-const SUITE_ORG_ID = '20202020-1c25-4d02-bf25-6aeccf7ea419';
+const ALLOWED_ORGANIZATION_ID = '20202020-1c25-4d02-bf25-6aeccf7ea419';
+const OTHER_ORGANIZATION_ID = '30303030-1c25-4d02-bf25-6aeccf7ea419';
 
 describe('SuiteTokenVerifierService', () => {
   let suiteTokenVerifierService: SuiteTokenVerifierService;
@@ -37,7 +38,11 @@ describe('SuiteTokenVerifierService', () => {
     audience?: string;
     expirationTime?: string | number;
   } = {}) =>
-    await new SignJWT({ email: 'ada@suite.example.com', ...claims })
+    await new SignJWT({
+      email: 'ada@suite.example.com',
+      org_id: ALLOWED_ORGANIZATION_ID,
+      ...claims,
+    })
       .setProtectedHeader({ alg: 'EdDSA', kid: KEY_ID })
       .setSubject('019e5fe2-34b7-7882-ba36-0fb0ae25f6f5')
       .setIssuer(issuer)
@@ -70,6 +75,7 @@ describe('SuiteTokenVerifierService', () => {
       SUITE_ISSUER,
       SUITE_AUDIENCE,
       SUITE_JWKS_URL,
+      SUITE_ORG_IDS: [ALLOWED_ORGANIZATION_ID],
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -95,6 +101,7 @@ describe('SuiteTokenVerifierService', () => {
       subject: '019e5fe2-34b7-7882-ba36-0fb0ae25f6f5',
       email: 'ada@suite.example.com',
       issuer: SUITE_ISSUER,
+      organizationId: ALLOWED_ORGANIZATION_ID,
     });
   });
 
@@ -166,41 +173,72 @@ describe('SuiteTokenVerifierService', () => {
     ).rejects.toThrow('Suite token is missing an email claim');
   });
 
-  it('returns the organisation claim when the token carries one', async () => {
-    const claims = await suiteTokenVerifierService.verify(
-      await signToken({ claims: { org_id: SUITE_ORG_ID } }),
-    );
-
-    expect(claims.organizationId).toBe(SUITE_ORG_ID);
+  it('rejects a token whose email is explicitly unverified', async () => {
+    await expect(
+      suiteTokenVerifierService.verify(
+        await signToken({ claims: { email_verified: false } }),
+      ),
+    ).rejects.toThrow('Suite token email is not verified');
   });
 
-  describe('when an organisation is pinned', () => {
-    beforeEach(() => {
-      configValues.SUITE_ORG_ID = SUITE_ORG_ID;
-    });
+  it('accepts a token whose email is explicitly verified', async () => {
+    const claims = await suiteTokenVerifierService.verify(
+      await signToken({ claims: { email_verified: true } }),
+    );
 
-    it('accepts a token from that organisation', async () => {
-      const claims = await suiteTokenVerifierService.verify(
-        await signToken({ claims: { org_id: SUITE_ORG_ID } }),
-      );
+    expect(claims.email).toBe('ada@suite.example.com');
+  });
 
-      expect(claims.organizationId).toBe(SUITE_ORG_ID);
-    });
+  it('accepts a token without an email_verified claim', async () => {
+    const claims = await suiteTokenVerifierService.verify(await signToken());
 
-    it('rejects a token from another organisation', async () => {
-      await expect(
-        suiteTokenVerifierService.verify(
-          await signToken({
-            claims: { org_id: '30303030-1c25-4d02-bf25-6aeccf7ea419' },
-          }),
-        ),
-      ).rejects.toThrow('Suite token belongs to another organisation');
-    });
+    expect(claims.email).toBe('ada@suite.example.com');
+  });
 
-    it('rejects a token with no organisation claim', async () => {
-      await expect(
-        suiteTokenVerifierService.verify(await signToken()),
-      ).rejects.toThrow('Suite token belongs to another organisation');
-    });
+  it('accepts a token whose organisation is the only allowed one', async () => {
+    const claims = await suiteTokenVerifierService.verify(await signToken());
+
+    expect(claims.organizationId).toBe(ALLOWED_ORGANIZATION_ID);
+  });
+
+  it('accepts a token whose organisation is any of the allowed ones', async () => {
+    configValues.SUITE_ORG_IDS = [
+      ALLOWED_ORGANIZATION_ID,
+      OTHER_ORGANIZATION_ID,
+    ];
+
+    const firstClaims = await suiteTokenVerifierService.verify(
+      await signToken({ claims: { org_id: ALLOWED_ORGANIZATION_ID } }),
+    );
+    const secondClaims = await suiteTokenVerifierService.verify(
+      await signToken({ claims: { org_id: OTHER_ORGANIZATION_ID } }),
+    );
+
+    expect(firstClaims.organizationId).toBe(ALLOWED_ORGANIZATION_ID);
+    expect(secondClaims.organizationId).toBe(OTHER_ORGANIZATION_ID);
+  });
+
+  it('rejects a token from an organisation outside the list', async () => {
+    await expect(
+      suiteTokenVerifierService.verify(
+        await signToken({ claims: { org_id: OTHER_ORGANIZATION_ID } }),
+      ),
+    ).rejects.toThrow('Suite token belongs to another organisation');
+  });
+
+  it('rejects every organisation when the allow list is unset', async () => {
+    configValues.SUITE_ORG_IDS = undefined;
+
+    await expect(
+      suiteTokenVerifierService.verify(await signToken()),
+    ).rejects.toThrow('Suite token belongs to another organisation');
+  });
+
+  it('rejects a token with no organisation claim', async () => {
+    await expect(
+      suiteTokenVerifierService.verify(
+        await signToken({ claims: { org_id: undefined } }),
+      ),
+    ).rejects.toThrow('Suite token is missing an organisation');
   });
 });

@@ -2,6 +2,8 @@ import { Logger } from '@nestjs/common';
 
 import { plainToClass } from 'class-transformer';
 import {
+  ArrayNotEmpty,
+  IsArray,
   IsDateString,
   IsDefined,
   IsEnum,
@@ -2458,6 +2460,16 @@ export class ConfigVariables {
   @ConfigVariablesMetadata({
     group: ConfigVariablesGroup.SUITE_EXCHANGE,
     description:
+      'Origin of the suite host page allowed to post the exchange, e.g. https://suite.example.com. Scheme, host and optional port, no path',
+    type: ConfigVariableType.STRING,
+  })
+  @ValidateIf((env) => env.SUITE_EXCHANGE_ENABLED)
+  @IsUrl({ require_tld: false, require_protocol: true })
+  SUITE_HOST_ORIGIN: string;
+
+  @ConfigVariablesMetadata({
+    group: ConfigVariablesGroup.SUITE_EXCHANGE,
+    description:
       'Expected `iss` claim of the suite access token. This is the browser-facing Clavis URL, which is typically not reachable from the server, hence distinct from SUITE_JWKS_URL',
     type: ConfigVariableType.STRING,
   })
@@ -2498,16 +2510,14 @@ export class ConfigVariables {
   @ConfigVariablesMetadata({
     group: ConfigVariablesGroup.SUITE_EXCHANGE,
     description:
-      'Suite organisation allowed to exchange, matched against the token `org_id` claim. Unset accepts every organisation of the issuer, which shares one workspace between all of them',
-    type: ConfigVariableType.STRING,
+      'Comma-separated list of suite organisation ids allowed to exchange, matched against the token `org_id` claim. Required when the exchange is enabled; list several ids to share this workspace between organisations',
+    type: ConfigVariableType.ARRAY,
   })
-  // compose has no conditionals, so the deployment passes it through as an
-  // empty string when it is unset — which @IsOptional alone would reject.
-  @ValidateIf(
-    (env) => env.SUITE_ORG_ID !== undefined && env.SUITE_ORG_ID !== '',
-  )
-  @IsUUID()
-  SUITE_ORG_ID: string;
+  @ValidateIf((env) => env.SUITE_EXCHANGE_ENABLED)
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsUUID('all', { each: true })
+  SUITE_ORG_IDS: string[];
 }
 
 export const validate = (config: Record<string, unknown>): ConfigVariables => {

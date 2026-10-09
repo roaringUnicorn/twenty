@@ -1,6 +1,6 @@
-import { isSafeSuiteNextPath } from 'src/engine/core-modules/auth/suite-exchange/utils/is-safe-suite-next-path.util';
+import { isSafeInternalPath } from '../isSafeInternalPath';
 
-describe('isSafeSuiteNextPath', () => {
+describe('isSafeInternalPath', () => {
   it.each([
     ['/', true],
     ['/objects/people', true],
@@ -12,6 +12,6 @@ describe('isSafeSuiteNextPath', () => {
     ['/\\evil.example.com', false],
     ['/objects\nLocation: https://evil.example.com', false],
   ])('returns %s for %p', (path, expected) => {
-    expect(isSafeSuiteNextPath(path)).toBe(expected);
+    expect(isSafeInternalPath(path)).toBe(expected);
   });
 });

@@ -24,12 +24,14 @@ import { WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.ent
 
 const SUITE_ISSUER = 'https://suite.example.com';
 const SUITE_WORKSPACE_ID = '20202020-1c25-4d02-bf25-6aeccf7ea419';
+const SUITE_ORGANIZATION_ID = '30303030-1c25-4d02-bf25-6aeccf7ea419';
 const WORKSPACE_URL = 'https://crm.example.com/';
 
 const CLAIMS = {
   subject: 'clavis-subject-1',
   email: 'ada@suite.example.com',
   issuer: SUITE_ISSUER,
+  organizationId: SUITE_ORGANIZATION_ID,
 };
 
 const WORKSPACE = { id: SUITE_WORKSPACE_ID } as WorkspaceEntity;
@@ -376,6 +378,45 @@ describe('SuiteExchangeService', () => {
       expect(
         signInUpService.signInUpOnExistingWorkspace,
       ).not.toHaveBeenCalled();
+    });
+
+    it('records the suite identity for a user matched on email alone', async () => {
+      jest
+        .spyOn(suiteUserIdentityRepository, 'findOne')
+        .mockResolvedValue(null);
+      userService.findUserByEmail.mockResolvedValue(VERIFIED_USER);
+      userSessionService.resolveSession.mockResolvedValue({
+        payload: {
+          type: JwtTokenTypeEnum.ACCESS,
+          userId: VERIFIED_USER.id,
+          workspaceId: SUITE_WORKSPACE_ID,
+        },
+      });
+
+      await suiteExchangeService.exchangeForRedirectUrl({
+        subjectToken: 'token',
+        presentedSessionToken: 'session-token',
+      });
+
+      expect(insertExecute).toHaveBeenCalledTimes(1);
+      expect(loginTokenService.generateLoginToken).not.toHaveBeenCalled();
+    });
+
+    it('does not record the suite identity again for an already linked user', async () => {
+      userSessionService.resolveSession.mockResolvedValue({
+        payload: {
+          type: JwtTokenTypeEnum.ACCESS,
+          userId: VERIFIED_USER.id,
+          workspaceId: SUITE_WORKSPACE_ID,
+        },
+      });
+
+      await suiteExchangeService.exchangeForRedirectUrl({
+        subjectToken: 'token',
+        presentedSessionToken: 'session-token',
+      });
+
+      expect(insertExecute).not.toHaveBeenCalled();
     });
 
     it('lands on the workspace root when no next is given', async () => {

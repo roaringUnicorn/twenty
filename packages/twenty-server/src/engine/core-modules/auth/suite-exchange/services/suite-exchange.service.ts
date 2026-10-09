@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { isNonEmptyString } from '@sniptt/guards';
 import { AppPath } from 'twenty-shared/types';
-import { isDefined } from 'twenty-shared/utils';
+import { isDefined, isSafeInternalPath } from 'twenty-shared/utils';
 import { Repository } from 'typeorm';
 
 import {
@@ -14,7 +14,6 @@ import { SignInUpService } from 'src/engine/core-modules/auth/services/sign-in-u
 import { SuiteUserIdentityEntity } from 'src/engine/core-modules/auth/suite-exchange/entities/suite-user-identity.entity';
 import { SuiteTokenVerifierService } from 'src/engine/core-modules/auth/suite-exchange/services/suite-token-verifier.service';
 import { type SuiteTokenClaims } from 'src/engine/core-modules/auth/suite-exchange/types/suite-token-claims.type';
-import { isSafeSuiteNextPath } from 'src/engine/core-modules/auth/suite-exchange/utils/is-safe-suite-next-path.util';
 import { LoginTokenService } from 'src/engine/core-modules/auth/token/services/login-token.service';
 import { JwtTokenTypeEnum } from 'src/engine/core-modules/auth/types/jwt-token-type.enum';
 import { WorkspaceDomainsService } from 'src/engine/core-modules/domain/workspace-domains/services/workspace-domains.service';
@@ -75,7 +74,11 @@ export class SuiteExchangeService {
       );
     }
 
-    if (isDefined(next) && !isSafeSuiteNextPath(next)) {
+    // The exchange is reached from a cross-origin page, so `next` is
+    // attacker-reachable and must never be able to express another origin
+    // (`//evil.host`, `\evil.host`) or smuggle control characters into the
+    // redirect header.
+    if (isDefined(next) && !isSafeInternalPath(next)) {
       throw new AuthException(
         'next must be a relative path within this instance',
         AuthExceptionCode.INVALID_INPUT,
@@ -97,6 +100,13 @@ export class SuiteExchangeService {
         workspace,
       }))
     ) {
+      // The user was matched on email only, and this path never reaches
+      // provisionUser, so the identity row would otherwise wait for an exchange
+      // that presents no session.
+      if (!resolvedUser.isAlreadyLinked) {
+        await this.linkSuiteIdentity(claims, resolvedUser.user.id);
+      }
+
       // Minting here would revoke the session the frame still holds as
       // SUPERSEDED, and the frame — which boots believing it is signed in —
       // would fire queries with the dead cookie and be bounced to sign-in.
@@ -184,9 +194,9 @@ export class SuiteExchangeService {
     return workspace;
   }
 
-  // The Twenty user this assertion already maps to, if any. Kept free of side
-  // effects so the caller can decide between reusing a live session and
-  // provisioning.
+  // The Twenty user this assertion already maps to, if any. It does not
+  // provision or link, so the caller can still decide between reusing a live
+  // session and provisioning; it does drop a dangling identity row on the way.
   private async resolveExistingUser(
     claims: SuiteTokenClaims,
   ): Promise<ResolvedSuiteUser | undefined> {

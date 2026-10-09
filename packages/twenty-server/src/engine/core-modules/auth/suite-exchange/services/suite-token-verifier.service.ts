@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { isNonEmptyString } from '@sniptt/guards';
 import { type JWTVerifyGetKey, jwtVerify } from 'jose';
-import { isDefined } from 'twenty-shared/utils';
+import { isDefined, isNonEmptyArray } from 'twenty-shared/utils';
 
 import {
   AuthException,
@@ -53,26 +53,46 @@ export class SuiteTokenVerifierService {
       );
     }
 
+    if (!isNonEmptyString(organizationId)) {
+      throw new AuthException(
+        'Suite token is missing an organisation',
+        AuthExceptionCode.FORBIDDEN_EXCEPTION,
+      );
+    }
+
+    // First-time linking is by email, so an unverified suite email would let
+    // anyone claim a victim's Twenty account. Whether Clavis issues the claim
+    // at all is unknown, so only an explicit denial is refused.
+    if (isDefined(payload.email_verified) && payload.email_verified !== true) {
+      throw new AuthException(
+        'Suite token email is not verified',
+        AuthExceptionCode.FORBIDDEN_EXCEPTION,
+      );
+    }
+
     this.assertOrganizationIsAllowed(organizationId);
 
     return {
       subject,
       email: email.toLowerCase(),
       issuer,
-      ...(isNonEmptyString(organizationId) ? { organizationId } : {}),
+      organizationId,
     };
   }
 
-  // A deployment serves one workspace, so without this pin every organisation
-  // of the issuer would share it — and each other's records.
-  private assertOrganizationIsAllowed(organizationId: unknown): void {
-    const allowedOrganizationId = this.twentyConfigService.get('SUITE_ORG_ID');
+  // A deployment serves one workspace, so the allow list is the only thing
+  // keeping the other organisations of the same issuer out of it.
+  private assertOrganizationIsAllowed(organizationId: string): void {
+    const allowedOrganizationIds =
+      this.twentyConfigService.get('SUITE_ORG_IDS');
 
-    if (!isNonEmptyString(allowedOrganizationId)) {
-      return;
-    }
-
-    if (organizationId !== allowedOrganizationId) {
+    // Config validation only rejects a variable that is present and invalid, so
+    // an entirely unset list still reaches here and must refuse rather than
+    // hand the workspace to every organisation of the issuer.
+    if (
+      !isNonEmptyArray(allowedOrganizationIds) ||
+      !allowedOrganizationIds.includes(organizationId)
+    ) {
       throw new AuthException(
         'Suite token belongs to another organisation',
         AuthExceptionCode.FORBIDDEN_EXCEPTION,
@@ -88,6 +108,7 @@ export class SuiteTokenVerifierService {
     try {
       const { payload } = await jwtVerify<{
         email?: string;
+        email_verified?: boolean;
         org_id?: string;
       }>(subjectToken, this.getKeySet(), {
         issuer,

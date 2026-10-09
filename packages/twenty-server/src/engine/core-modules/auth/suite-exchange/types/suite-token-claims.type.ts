@@ -4,5 +4,5 @@ export type SuiteTokenClaims = {
   subject: string;
   email: string;
   issuer: string;
-  organizationId?: string;
+  organizationId: string;
 };
